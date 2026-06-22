@@ -16,7 +16,8 @@
  * MIT licensed. See README.md and LICENSE.
  */
 import { createHmac } from "node:crypto";
-import { access, constants, mkdir } from "node:fs/promises";
+import { rmSync } from "node:fs";
+import { access, constants, mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
@@ -41,9 +42,6 @@ const DEFAULT_USER_AGENT =
 	"Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) " +
 	"AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
 
-// Dedicated profile dir: never locks horns with a desktop Chrome session.
-const PROFILE_DIR = join(tmpdir(), "telegram-mini-app-screenshot-profile");
-
 function fail(message, code = 1) {
 	console.error(`error: ${message}`);
 	process.exit(code);
@@ -67,6 +65,7 @@ OPTIONS
       --height <px>      Viewport height (default: 844)
       --dpr <n>          devicePixelRatio (default: 3)
       --wait <ms>        Settle delay before the shot (default: 5000)
+      --timeout <ms>     Navigation timeout for page load (default: 30000)
       --chrome <path>    Chrome/Chromium executable (env: CHROME_PATH,
                          default: /usr/bin/google-chrome-stable)
       --user-agent <ua>  Override user agent (default: iPhone Safari)
@@ -86,6 +85,12 @@ HOW IT WORKS
   #tgWebAppData=<encoded>. telegram-web-app.js exposes it as
   window.Telegram.WebApp.initData, so you can load and screenshot your own
   app headlessly, without a phone or the Telegram client.
+
+NOTES
+  Signing replaces any existing #fragment in --url with tgWebAppData, which
+  can affect apps that use hash-based routing (skip with --no-initdata).
+  Prefer the BOT_TOKEN env var over --token, which can leak into your shell
+  history and the process list.
 `);
 }
 
@@ -102,6 +107,7 @@ const { values } = parseArgs({
 		height: { type: "string" },
 		dpr: { type: "string" },
 		wait: { type: "string" },
+		timeout: { type: "string" },
 		chrome: { type: "string" },
 		"user-agent": { type: "string" },
 		"no-initdata": { type: "boolean", default: false },
@@ -131,19 +137,21 @@ const width = Number(values.width ?? 390);
 const height = Number(values.height ?? 844);
 const dpr = Number(values.dpr ?? 3);
 const waitMs = Number(values.wait ?? 5000);
+const gotoTimeoutMs = Number(values.timeout ?? 30000);
 const fullPage = values["full-page"];
 const noSandbox = values["no-sandbox"];
 const wantInitData = !values["no-initdata"];
 const userAgent = values["user-agent"] ?? DEFAULT_USER_AGENT;
 
 if (
-	![width, height, dpr, waitMs].every((n) => Number.isFinite(n)) ||
+	![width, height, dpr, waitMs, gotoTimeoutMs].every((n) => Number.isFinite(n)) ||
 	width <= 0 ||
 	height <= 0 ||
 	dpr <= 0 ||
-	waitMs < 0
+	waitMs < 0 ||
+	gotoTimeoutMs < 0
 ) {
-	fail("--width, --height, --dpr must be positive numbers; --wait must be >= 0.");
+	fail("--width, --height, --dpr must be positive numbers; --wait and --timeout must be >= 0.");
 }
 
 const token = values.token ?? process.env.BOT_TOKEN;
@@ -192,6 +200,12 @@ let finalUrl;
 try {
 	const parsed = new URL(url);
 	if (wantInitData) {
+		if (parsed.hash) {
+			console.error(
+				`warning: replacing the existing URL fragment "${parsed.hash}" with the signed ` +
+					"tgWebAppData; apps that use hash-based routing may be affected.",
+			);
+		}
 		parsed.hash = buildInitDataFragment({ token, userId, name, lang });
 	}
 	finalUrl = parsed.toString();
@@ -238,8 +252,19 @@ async function main() {
 	// Make sure the output directory exists (e.g. --out shots/app.png).
 	await mkdir(dirname(out), { recursive: true }).catch(() => {});
 
+	// A fresh, unique profile dir per run lets several instances run in
+	// parallel (CI matrices, multiple apps/locales) without fighting over a
+	// shared Chrome profile lock, and never inherits a stale SingletonLock from
+	// a previously killed run. Removed on exit (covers fail()'s process.exit).
+	const profileDir = await mkdtemp(join(tmpdir(), "telegram-mini-app-screenshot-"));
+	process.on("exit", () => {
+		try {
+			rmSync(profileDir, { recursive: true, force: true });
+		} catch {}
+	});
+
 	const launchArgs = [
-		`--user-data-dir=${PROFILE_DIR}`,
+		`--user-data-dir=${profileDir}`,
 		`--window-size=${width},${height}`,
 	];
 	if (noSandbox) launchArgs.push("--no-sandbox");
@@ -268,7 +293,7 @@ async function main() {
 			isMobile: true,
 			hasTouch: true,
 		});
-		await page.goto(finalUrl, { waitUntil: "load", timeout: 30_000 });
+		await page.goto(finalUrl, { waitUntil: "load", timeout: gotoTimeoutMs });
 		// Give scenes/tweens/network a moment to settle before the shot.
 		await new Promise((r) => setTimeout(r, waitMs));
 		await page.screenshot({ path: out, fullPage });

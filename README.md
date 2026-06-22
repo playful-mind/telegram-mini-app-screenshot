@@ -13,7 +13,7 @@ npm install        # installs puppeteer-core
 chmod +x index.mjs # optional: run it as ./index.mjs
 ```
 
-You also need **Google Chrome or Chromium** installed. The tool drives your system Chrome by default (`/usr/bin/google-chrome-stable`); point it elsewhere with `--chrome <path>` or the `CHROME_PATH` env var.
+You need **Node.js 22.12+** and **Google Chrome or Chromium** installed. The tool drives your system Chrome by default (`/usr/bin/google-chrome-stable`); point it elsewhere with `--chrome <path>` or the `CHROME_PATH` env var.
 
 ## Usage
 
@@ -30,6 +30,10 @@ BOT_TOKEN=123456:ABC-DEF... \
 ./index.mjs --url https://my-mini-app.example.com --no-initdata --out shot.png
 ```
 
+> **Tip:** prefer the `BOT_TOKEN` env var over `--token` — a flag can leak into your shell history and the process list.
+>
+> When signing, the tool replaces any existing `#fragment` in `--url` with the `tgWebAppData` fragment, so apps that rely on hash-based routing may be affected. Use `--no-initdata` to leave the URL untouched.
+
 ### Options
 
 | Flag | Env | Default | Description |
@@ -44,6 +48,7 @@ BOT_TOKEN=123456:ABC-DEF... \
 | `--height` | — | `844` | Viewport height (px) |
 | `--dpr` | — | `3` | `devicePixelRatio` |
 | `--wait` | — | `5000` | Settle delay before the shot (ms) |
+| `--timeout` | — | `30000` | Navigation timeout for page load (ms) |
 | `--chrome` | `CHROME_PATH` | `/usr/bin/google-chrome-stable` | Chrome/Chromium executable |
 | `--user-agent` | — | iPhone Safari | Override the user agent |
 | `--no-initdata` | — | off | Skip initData signing (for apps that don't need it) |
