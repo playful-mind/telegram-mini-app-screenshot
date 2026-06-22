@@ -1,0 +1,41 @@
+{
+  "name": "telegram-mini-app-screenshot",
+  "version": "1.0.0",
+  "description": "Headless phone-format screenshots of any Telegram Mini App, with initData signing.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Playful Mind (https://playfulmind.me)",
+  "homepage": "https://github.com/playful-mind/telegram-mini-app-screenshot",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/playful-mind/telegram-mini-app-screenshot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/playful-mind/telegram-mini-app-screenshot/issues"
+  },
+  "keywords": [
+    "telegram",
+    "telegram-mini-app",
+    "telegram-web-app",
+    "telegram-bot",
+    "screenshot",
+    "puppeteer",
+    "headless",
+    "initdata",
+    "tgresponsive"
+  ],
+  "bin": {
+    "telegram-mini-app-screenshot": "index.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.3"
+  },
+  "dependencies": {
+    "puppeteer-core": "^25.1.0"
+  }
+}
